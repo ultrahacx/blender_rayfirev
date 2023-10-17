@@ -70,7 +70,7 @@ class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
         bpy.ops.object.select_all(action='DESELECT')
         bpy.context.view_layer.objects.active = rig
         rig.select_set(True)
-        bpy.ops.nla.bake(frame_start=0, frame_end=250, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
+        bpy.ops.nla.bake(frame_start=context.scene.rayfire_start_frame, frame_end=context.scene.rayfire_end_frame, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
 
 
         for obj in selected_objects:
@@ -106,8 +106,14 @@ class ULTRAHACX_PT_VIEW_PANEL(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+
+        row = layout.row()
+        row.prop(context.scene, "rayfire_start_frame")
+        row = layout.row()
+        row.prop(context.scene, "rayfire_end_frame")
         row = layout.row()
         row.operator("ultrahacx.rayfire_create")
+
         row = layout.row()
         row.label(text="Liked the addon? Consider supporting me")
         row = layout.row()
@@ -122,9 +128,15 @@ class ULTRAHACX_PT_VIEW_PANEL(bpy.types.Panel):
         url_btn.url = 'https://ko-fi.com/ultrahacx'
 
 def register():
+    bpy.types.Scene.rayfire_start_frame = bpy.props.IntProperty(
+        name="Start frame", default=0)
+    bpy.types.Scene.rayfire_end_frame = bpy.props.IntProperty(
+        name="End frame", default=250)
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_create)
     bpy.utils.register_class(ULTRAHACX_PT_VIEW_PANEL)
     
 def unregister():
+    del bpy.types.Scene.rayfire_start_frame
+    del bpy.types.Scene.rayfire_end_frame
     bpy.utils.unregister_class(ULTRAHACX_OT_rayfire_create)
     bpy.utils.unregister_class(ULTRAHACX_PT_VIEW_PANEL)

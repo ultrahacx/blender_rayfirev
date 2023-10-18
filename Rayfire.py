@@ -27,6 +27,19 @@ def add_bone_flags(armature):
         new_flag.name = "TransZ"
 
 
+def join_objects(active_object, objects, joined_objects):
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in objects:
+        if obj.animation_data is not None:
+            obj.animation_data_clear()
+
+        vg = obj.vertex_groups.new(name=obj.name)
+        vg.add(range(len(obj.data.vertices)), 1.0, 'REPLACE')
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = active_object
+    bpy.ops.object.join()
+    joined_objects.append(bpy.context.view_layer.objects.active)
+
 class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
     bl_idname = "ultrahacx.rayfire_create"
     bl_label = "Create rayfire drawable"
@@ -177,37 +190,35 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
         rig.select_set(True)
         bpy.ops.nla.bake(frame_start=context.scene.rayfire_start_frame, frame_end=context.scene.rayfire_end_frame, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
 
-
-        bpy.ops.object.select_all(action='DESELECT')
-        bpy.context.view_layer.objects.active = selected_objects[0]
-        for obj in selected_objects:
-            if obj.animation_data is not None:
-                obj.animation_data_clear()
-
-            vg = obj.vertex_groups.new(name=obj.name)
-            vg.add(range(len(obj.data.vertices)), 1.0, 'REPLACE')
-            obj.select_set(True)
+        joined_objects = []
+        split_objects_list = [selected_objects[x:x+context.scene.rayfire_split_count] for x in range(0, len(selected_objects), context.scene.rayfire_split_count)]
         
-        bpy.ops.object.join()
-
-        obj = bpy.context.view_layer.objects.active
-
-        matrix = obj.matrix_world.copy()
-        for vert in obj.data.vertices:
-            vert.co = matrix @ vert.co
-        obj.matrix_world.identity()
+        for objects_list in split_objects_list:
+            join_objects(objects_list[0], objects_list, joined_objects)
         
-        obj.parent = rig
-        obj.sollum_type = 'sollumz_drawable_model'
-        obj.sollumz_lods.add_empty_lods()
-        obj.sollumz_lods.set_lod_mesh("sollumz_high", obj.data)
-        obj.sollumz_lods.set_active_lod("sollumz_high")
+        for obj in joined_objects:
+            print("Adding modifier to joined mesh:", obj.name)
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.context.view_layer.objects.active = obj
+
+            matrix = obj.matrix_world.copy()
+            for vert in obj.data.vertices:
+                vert.co = matrix @ vert.co
+            obj.matrix_world.identity()
+            
+            obj.parent = rig
+            obj.sollum_type = 'sollumz_drawable_model'
+            obj.sollumz_lods.add_empty_lods()
+            obj.sollumz_lods.set_lod_mesh("sollumz_high", obj.data)
+            obj.sollumz_lods.set_active_lod("sollumz_high")
+
+            armature_mod = obj.modifiers.new("skel", "ARMATURE")
+            armature_mod.object = rig
+
         
         rig.skinned_model_properties.high.unknown_1 = len(rig.data.bones)
         rig.skinned_model_properties.high.flags = 1
         
-        armature_mod = obj.modifiers.new("skel", "ARMATURE")
-        armature_mod.object = rig
 
         self.report({'INFO'}, f'Created new skinned drawable {rig.name} successfully')
 
@@ -232,6 +243,7 @@ class ULTRAHACX_PT_VIEW_PANEL(bpy.types.Panel):
         row = layout.row()
         row.operator("ultrahacx.rayfire_create")
         row = layout.row()
+        row.prop(context.scene, "rayfire_split_count")
         row.operator("ultrahacx.rayfire_skinned_create")
 
         row = layout.row()
@@ -252,6 +264,8 @@ def register():
         name="Start frame", default=0)
     bpy.types.Scene.rayfire_end_frame = bpy.props.IntProperty(
         name="End frame", default=250)
+    bpy.types.Scene.rayfire_split_count = bpy.props.IntProperty(
+        name="Split count", default=128, description="Maximum number of bones per geometry")
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_create)
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_skinned_create)
     bpy.utils.register_class(ULTRAHACX_PT_VIEW_PANEL)

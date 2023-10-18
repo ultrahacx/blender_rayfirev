@@ -11,6 +11,22 @@ bl_info = {
 }
 
 
+def add_bone_flags(armature):
+    for pBone in armature.pose.bones:
+        new_flag = pBone.bone.bone_properties.flags.add()
+        new_flag.name = "RotX"
+        new_flag = pBone.bone.bone_properties.flags.add()
+        new_flag.name = "RotY"
+        new_flag = pBone.bone.bone_properties.flags.add()
+        new_flag.name = "RotZ"
+        new_flag = pBone.bone.bone_properties.flags.add()
+        new_flag.name = "TransX"
+        new_flag = pBone.bone.bone_properties.flags.add()
+        new_flag.name = "TransY"
+        new_flag = pBone.bone.bone_properties.flags.add()
+        new_flag.name = "TransZ"
+
+
 class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
     bl_idname = "ultrahacx.rayfire_create"
     bl_label = "Create rayfire drawable"
@@ -58,6 +74,8 @@ class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
 
                 
         bpy.ops.object.editmode_toggle()
+
+        add_bone_flags(rig)
 
         for bone in rig.pose.bones:
             if bpy.data.objects.get(bone.name):
@@ -144,6 +162,8 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
 
                 
         bpy.ops.object.editmode_toggle()
+
+        add_bone_flags(rig)
 
         for bone in rig.pose.bones:
             if bpy.data.objects.get(bone.name):

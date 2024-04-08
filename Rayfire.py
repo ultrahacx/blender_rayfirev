@@ -188,8 +188,6 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
 
             add_bone_flags(rig)
 
-            joined_object_returned = join_objects(objects_list[0], objects_list)
-            
             for bone in rig.pose.bones:
                 if bpy.data.objects.get(bone.name):
                     crc = bone.constraints.new('COPY_TRANSFORMS')
@@ -201,7 +199,21 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
             bpy.context.view_layer.objects.active = rig
             rig.select_set(True)
             bpy.ops.nla.bake(frame_start=context.scene.rayfire_start_frame, frame_end=context.scene.rayfire_end_frame, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
-        
+            rig.select_set(False)
+
+            joined_object_returned = join_objects(objects_list[0], objects_list)
+
+            # Remove rigid body physics if any
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.context.view_layer.objects.active = joined_object_returned
+            joined_object_returned.select_set(True)
+
+            if joined_object_returned.rigid_body:
+                bpy.ops.rigidbody.object_remove()
+
+            bpy.ops.object.select_all(action='DESELECT')
+
+
             print("Adding modifier to joined mesh:", joined_object_returned.name)
             bpy.ops.object.select_all(action='DESELECT')
             bpy.context.view_layer.objects.active = joined_object_returned

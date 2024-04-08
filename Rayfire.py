@@ -27,7 +27,7 @@ def add_bone_flags(armature):
         new_flag.name = "TransZ"
 
 
-def join_objects(active_object, objects, joined_objects):
+def join_objects(active_object, objects):
     bpy.ops.object.select_all(action='DESELECT')
     for obj in objects:
         if obj.animation_data is not None:
@@ -38,7 +38,35 @@ def join_objects(active_object, objects, joined_objects):
         obj.select_set(True)
     bpy.context.view_layer.objects.active = active_object
     bpy.ops.object.join()
-    joined_objects.append(bpy.context.view_layer.objects.active)
+    return bpy.context.view_layer.objects.active
+
+
+def create_armature_from_objects(armature, objs):
+    #togle to edit mode to add bones to armature
+    bpy.ops.object.editmode_toggle()
+
+    parent_bone = None
+    for obj in objs:
+            obj.name = obj.name.replace(".","_")
+            if parent_bone is None:
+                current_bone = armature.edit_bones.new("root")
+            
+                current_bone.head = [0, 0, 0]
+                current_bone.tail = [0, 0.1, 0]
+                parent_bone = current_bone
+            
+            current_bone = armature.edit_bones.new(obj.name)
+            
+            current_bone.head = [0, 0, 0]
+            current_bone.tail = [0, 0.1, 0]
+            
+            current_bone.translate(obj.location)
+            
+            current_bone.parent = parent_bone
+            current_bone.use_connect = False
+
+    bpy.ops.object.editmode_toggle()
+
 
 class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
     bl_idname = "ultrahacx.rayfire_create"
@@ -139,91 +167,85 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
             self.report({'ERROR'}, 'No objects selected')
             return {'FINISHED'}
 
-        armature = bpy.data.armatures.new("rayfire_armature")
-        rig = bpy.data.objects.new("rayfire_armature", armature)
-        bpy.data.collections[selected_objects[0].users_collection[0].name].objects.link(rig)
-
-        context.view_layer.objects.active = rig
-        rig.sollum_type = 'sollumz_drawable'
-
-        #set the currect frame to 0
-        bpy.context.scene.frame_set(0)
-
-        #togle to edit mode to add bones to armature
-        bpy.ops.object.editmode_toggle()
-
-        parent_bone = None
-
-        for obj in selected_objects:
-            obj.name = obj.name.replace(".","_")
-            if parent_bone is None:
-                current_bone = armature.edit_bones.new("root")
-            
-                current_bone.head = [0, 0, 0]
-                current_bone.tail = [0, 0.1, 0]
-                parent_bone = current_bone
-            
-            current_bone = armature.edit_bones.new(obj.name)
-            
-            current_bone.head = [0, 0, 0]
-            current_bone.tail = [0, 0.1, 0]
-            
-            current_bone.translate(obj.location)
-            
-            current_bone.parent = parent_bone
-            current_bone.use_connect = False
-
-                
-        bpy.ops.object.editmode_toggle()
-
-        add_bone_flags(rig)
-
-        for bone in rig.pose.bones:
-            if bpy.data.objects.get(bone.name):
-                crc = bone.constraints.new('COPY_TRANSFORMS')
-                crc.target = bpy.data.objects[bone.name]
-                crc.target_space = 'WORLD'
-                crc.owner_space = 'POSE'
-
-        bpy.ops.object.select_all(action='DESELECT')
-        bpy.context.view_layer.objects.active = rig
-        rig.select_set(True)
-        bpy.ops.nla.bake(frame_start=context.scene.rayfire_start_frame, frame_end=context.scene.rayfire_end_frame, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
-
         joined_objects = []
         split_objects_list = [selected_objects[x:x+context.scene.rayfire_split_count] for x in range(0, len(selected_objects), context.scene.rayfire_split_count)]
         
+        armature_index = 0
+
         for objects_list in split_objects_list:
-            join_objects(objects_list[0], objects_list, joined_objects)
-        
-        for obj in joined_objects:
-            print("Adding modifier to joined mesh:", obj.name)
-            bpy.ops.object.select_all(action='DESELECT')
-            bpy.context.view_layer.objects.active = obj
+            name = f"rayfire_armature_{armature_index}"
+            armature = bpy.data.armatures.new(name)
+            rig = bpy.data.objects.new(name, armature)
+            bpy.data.collections[objects_list[0].users_collection[0].name].objects.link(rig)
 
-            matrix = obj.matrix_world.copy()
-            for vert in obj.data.vertices:
-                vert.co = matrix @ vert.co
-            obj.matrix_world.identity()
+            context.view_layer.objects.active = rig
+            rig.sollum_type = 'sollumz_drawable'
+
+            #set the currect frame to 0
+            bpy.context.scene.frame_set(0)
             
-            obj.parent = rig
-            obj.sollum_type = 'sollumz_drawable_model'
-            obj.sollumz_lods.add_empty_lods()
-            obj.sollumz_lods.set_lod_mesh("sollumz_high", obj.data)
-            obj.sollumz_lods.set_active_lod("sollumz_high")
+            create_armature_from_objects(armature, objects_list)
 
-            armature_mod = obj.modifiers.new("skel", "ARMATURE")
+            add_bone_flags(rig)
+
+            joined_object_returned = join_objects(objects_list[0], objects_list)
+            
+            for bone in rig.pose.bones:
+                if bpy.data.objects.get(bone.name):
+                    crc = bone.constraints.new('COPY_TRANSFORMS')
+                    crc.target = bpy.data.objects[bone.name]
+                    crc.target_space = 'WORLD'
+                    crc.owner_space = 'POSE'
+
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.context.view_layer.objects.active = rig
+            rig.select_set(True)
+            bpy.ops.nla.bake(frame_start=context.scene.rayfire_start_frame, frame_end=context.scene.rayfire_end_frame, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
+        
+            print("Adding modifier to joined mesh:", joined_object_returned.name)
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.context.view_layer.objects.active = joined_object_returned
+
+            matrix = joined_object_returned.matrix_world.copy()
+            for vert in joined_object_returned.data.vertices:
+                vert.co = matrix @ vert.co
+            joined_object_returned.matrix_world.identity()
+            
+            joined_object_returned.parent = rig
+            joined_object_returned.sollum_type = 'sollumz_drawable_model'
+            joined_object_returned.sollumz_lods.add_empty_lods()
+            joined_object_returned.sollumz_lods.set_lod_mesh("sollumz_high", joined_object_returned.data)
+            joined_object_returned.sollumz_lods.set_active_lod("sollumz_high")
+
+            armature_mod = joined_object_returned.modifiers.new("skel", "ARMATURE")
             armature_mod.object = rig
 
-        
-        rig.skinned_model_properties.high.unknown_1 = len(rig.data.bones)
-        rig.skinned_model_properties.high.flags = 1
-        
+            rig.skinned_model_properties.high.unknown_1 = len(rig.data.bones)
+            rig.skinned_model_properties.high.flags = 1
+            armature_index+=1
+
 
         self.report({'INFO'}, f'Created new skinned drawable {rig.name} successfully')
 
         return {'FINISHED'}
-    
+
+
+class ULTRAHACX_OT_rayfire_create_joined_vertmesh(bpy.types.Operator):
+    bl_idname = "ultrahacx.rayfire_create_joined_vertmesh"
+    bl_label = "Join mesh as vertex groups"
+    bl_action = "Join mesh as vertex groups"
+
+    def execute(self, context):
+        selected_objects = context.selected_objects
+        if len(selected_objects) <= 0:
+            self.report({'ERROR'}, 'No objects selected')
+            return {'FINISHED'}
+        
+        joined_objects = []
+        joined_objects.append(join_objects(selected_objects[0], selected_objects))
+
+        return {'FINISHED'}
+        
 
 class ULTRAHACX_PT_VIEW_PANEL(bpy.types.Panel):
     bl_label = "Rayfire Creator"
@@ -247,6 +269,9 @@ class ULTRAHACX_PT_VIEW_PANEL(bpy.types.Panel):
         row.operator("ultrahacx.rayfire_skinned_create")
 
         row = layout.row()
+        row.operator("ultrahacx.rayfire_create_joined_vertmesh")
+
+        row = layout.row()
         row.label(text="Liked the addon? Consider supporting me")
         row = layout.row()
         url_btn = row.operator('wm.url_open',
@@ -268,6 +293,7 @@ def register():
         name="Split count", default=128, description="Maximum number of bones per geometry")
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_create)
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_skinned_create)
+    bpy.utils.register_class(ULTRAHACX_OT_rayfire_create_joined_vertmesh)
     bpy.utils.register_class(ULTRAHACX_PT_VIEW_PANEL)
     
 def unregister():
@@ -275,4 +301,5 @@ def unregister():
     del bpy.types.Scene.rayfire_end_frame
     bpy.utils.unregister_class(ULTRAHACX_OT_rayfire_create)
     bpy.utils.unregister_class(ULTRAHACX_OT_rayfire_skinned_create)
+    bpy.utils.unregister_class(ULTRAHACX_OT_rayfire_create_joined_vertmesh)
     bpy.utils.unregister_class(ULTRAHACX_PT_VIEW_PANEL)

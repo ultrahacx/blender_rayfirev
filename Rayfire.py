@@ -46,14 +46,16 @@ def create_armature_from_objects(armature, objs):
     bpy.ops.object.editmode_toggle()
 
     parent_bone = None
+    cursor_location = bpy.context.scene.cursor.location
     for obj in objs:
             obj.name = obj.name.replace(".","_")
             if parent_bone is None:
                 current_bone = armature.edit_bones.new("root")
             
-                current_bone.head = [0, 0, 0]
-                current_bone.tail = [0, 0.1, 0]
-                parent_bone = current_bone
+                current_bone.head = cursor_location
+                current_bone.tail = cursor_location
+                current_bone.tail.y += 0.1
+                parent_bone = current_bone  
             
             current_bone = armature.edit_bones.new(obj.name)
             
@@ -234,7 +236,16 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
 
             rig.skinned_model_properties.high.unknown_1 = len(rig.data.bones)
             rig.skinned_model_properties.high.flags = 1
-            armature_index+=1
+            if context.scene.rayfire_apply_obj_origin:
+                # set origin of armature to 3D cursor
+                bpy.ops.object.select_all(action='DESELECT')
+                bpy.context.view_layer.objects.active = rig
+                rig.select_set(True)
+                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
+                bpy.ops.object.select_all(action='DESELECT')
+                # set armature back at origin for proper export
+                rig.location = (0.0, 0.0, 0.0)
+                armature_index+=1
 
 
         self.report({'INFO'}, f'Created new skinned drawable {rig.name} successfully')
@@ -278,6 +289,7 @@ class ULTRAHACX_PT_VIEW_PANEL(bpy.types.Panel):
         row.operator("ultrahacx.rayfire_create")
         row = layout.row()
         row.prop(context.scene, "rayfire_split_count")
+        row.prop(context.scene, "rayfire_apply_obj_origin")
         row.operator("ultrahacx.rayfire_skinned_create")
 
         row = layout.row()
@@ -303,6 +315,8 @@ def register():
         name="End frame", default=250)
     bpy.types.Scene.rayfire_split_count = bpy.props.IntProperty(
         name="Split count", default=128, description="Maximum number of bones per geometry")
+    bpy.types.Scene.rayfire_apply_obj_origin = bpy.props.BoolProperty(
+        name="Apply transforms and reset to origin", default=False)
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_create)
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_skinned_create)
     bpy.utils.register_class(ULTRAHACX_OT_rayfire_create_joined_vertmesh)

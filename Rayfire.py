@@ -3,7 +3,7 @@ import bpy
 bl_info = {
     "name": "Rayfire Creator",
     "author": "ultrahacx",
-    "version": (1, 1),
+    "version": (1, 1, 1),
     "blender": (3, 6, 0),
     "location": "View3D > N",
     "description": "Create GTAV Rayfire Sollumz drawable in a single click",
@@ -144,9 +144,8 @@ class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
             
             obj.parent = rig
             obj.sollum_type = 'sollumz_drawable_model'
-            obj.sollumz_lods.add_empty_lods()
-            obj.sollumz_lods.set_lod_mesh("sollumz_high", obj.data)
-            obj.sollumz_lods.set_active_lod("sollumz_high")
+            obj.sz_lods.get_lod("sollumz_high").mesh = obj.data
+            obj.sz_lods.active_lod_level = "sollumz_high"
             
             crc = obj.constraints.new('CHILD_OF')
             crc.target = rig
@@ -227,9 +226,8 @@ class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
             
             joined_object_returned.parent = rig
             joined_object_returned.sollum_type = 'sollumz_drawable_model'
-            joined_object_returned.sollumz_lods.add_empty_lods()
-            joined_object_returned.sollumz_lods.set_lod_mesh("sollumz_high", joined_object_returned.data)
-            joined_object_returned.sollumz_lods.set_active_lod("sollumz_high")
+            joined_object_returned.sz_lods.get_lod("sollumz_high").mesh = joined_object_returned.data
+            joined_object_returned.sz_lods.active_lod_level = "sollumz_high"
 
             armature_mod = joined_object_returned.modifiers.new("skel", "ARMATURE")
             armature_mod.object = rig

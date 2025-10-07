@@ -1,9 +1,10 @@
 import bpy
+from mathutils import Matrix
 
 bl_info = {
     "name": "Rayfire Creator",
     "author": "ultrahacx",
-    "version": (1, 1, 1),
+    "version": (1, 1, 2),
     "blender": (3, 6, 0),
     "location": "View3D > N",
     "description": "Create GTAV Rayfire Sollumz drawable in a single click",
@@ -69,6 +70,10 @@ def create_armature_from_objects(armature, objs):
 
     bpy.ops.object.editmode_toggle()
 
+def _target_collection_from_context(context):
+    lc = context.view_layer.active_layer_collection
+    return lc.collection if lc else context.scene.collection
+
 
 class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
     bl_idname = "ultrahacx.rayfire_create"
@@ -76,85 +81,95 @@ class ULTRAHACX_OT_rayfire_create(bpy.types.Operator):
     bl_action = "Create sollumz rayfire drawable"
 
     def execute(self, context):
-        selected_objects = context.selected_objects
-        if len(selected_objects) <= 0:
-            self.report({'ERROR'}, 'No objects selected')
-            return {'FINISHED'}
+        selected_objects = [o for o in context.selected_objects if o.type == 'MESH']
+        if not selected_objects:
+            self.report({'ERROR'}, 'No mesh objects selected')
+            return {'CANCELLED'}
+        
+        arm_data = bpy.data.armatures.new("rayfire_armature")
+        rig = bpy.data.objects.new("rayfire_armature", arm_data)
 
-        armature = bpy.data.armatures.new("rayfire_armature")
-        rig = bpy.data.objects.new("rayfire_armature", armature)
-        bpy.data.collections[selected_objects[0].users_collection[0].name].objects.link(rig)
+        tgt_col = _target_collection_from_context(context)
+        if rig.name not in tgt_col.objects:
+            tgt_col.objects.link(rig)
 
         context.view_layer.objects.active = rig
+        rig.select_set(True)
+
         rig.sollum_type = 'sollumz_drawable'
 
-        #set the currect frame to 0
-        bpy.context.scene.frame_set(0)
-
-        #togle to edit mode to add bones to armature
-        bpy.ops.object.editmode_toggle()
-
+        context.scene.frame_set(0)
+        bpy.ops.object.mode_set(mode='EDIT')
         parent_bone = None
 
-        for obj in selected_objects:
-            obj.name = obj.name.replace(".","_")
+        for idx, obj in enumerate(selected_objects):
+            obj.name = obj.name.replace(".", "_")
             if parent_bone is None:
-                current_bone = armature.edit_bones.new("root")
-            
-                current_bone.head = [0, 0, 0]
-                current_bone.tail = [0, 0.1, 0]
-                parent_bone = current_bone
-            
-            current_bone = armature.edit_bones.new(obj.name)
-            
-            current_bone.head = [0, 0, 0]
-            current_bone.tail = [0, 0.1, 0]
-            
-            current_bone.translate(obj.location)
-            
-            current_bone.parent = parent_bone
-            current_bone.use_connect = False
+                parent_bone = arm_data.edit_bones.new("root")
+                parent_bone.head = (0.0, 0.0, 0.0)
+                parent_bone.tail = (0.0, 0.1, 0.0)
 
-                
-        bpy.ops.object.editmode_toggle()
+            eb = arm_data.edit_bones.new(obj.name)
+            eb.head = (0.0, 0.0, 0.0)
+            eb.tail = (0.0, 0.1, 0.0)
+            eb.translate(obj.location)
+            eb.parent = parent_bone
+            eb.use_connect = False
 
-        add_bone_flags(rig)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        try:
+            add_bone_flags(rig)
+        except Exception as ex:
+            self.report({'WARNING'}, f'add_bone_flags failed: {ex}')
 
-        for bone in rig.pose.bones:
-            if bpy.data.objects.get(bone.name):
-                crc = bone.constraints.new('COPY_TRANSFORMS')
-                crc.target = bpy.data.objects[bone.name]
-                crc.target_space = 'WORLD'
-                crc.owner_space = 'POSE'
+        for pbone in rig.pose.bones:
+            src_obj = bpy.data.objects.get(pbone.name)
+            if src_obj:
+                c = pbone.constraints.new('COPY_TRANSFORMS')
+                c.target = src_obj
+                c.target_space = 'WORLD'
+                c.owner_space = 'POSE'
 
         bpy.ops.object.select_all(action='DESELECT')
-        bpy.context.view_layer.objects.active = rig
         rig.select_set(True)
-        bpy.ops.nla.bake(frame_start=context.scene.rayfire_start_frame, frame_end=context.scene.rayfire_end_frame, only_selected=False, visual_keying=True, clear_constraints=True, use_current_action=False, bake_types={'POSE'})
+        context.view_layer.objects.active = rig
 
+        bpy.ops.nla.bake(
+            frame_start=context.scene.rayfire_start_frame,
+            frame_end=context.scene.rayfire_end_frame,
+            only_selected=False,
+            visual_keying=True,
+            clear_constraints=True,
+            use_current_action=False,
+            bake_types={'POSE'}
+        )
 
         for obj in selected_objects:
             if obj.animation_data is not None:
                 obj.animation_data_clear()
-            
-            matrix = obj.matrix_world.copy()
-            for vert in obj.data.vertices:
-                vert.co = matrix @ vert.co
-            obj.matrix_world.identity()
-            
+
+            mw = obj.matrix_world.copy()
+            obj.data.transform(mw)
+            obj.matrix_world = Matrix.Identity(4)
+
             obj.parent = rig
             obj.sollum_type = 'sollumz_drawable_model'
-            obj.sz_lods.get_lod("sollumz_high").mesh = obj.data
-            obj.sz_lods.active_lod_level = "sollumz_high"
-            
-            crc = obj.constraints.new('CHILD_OF')
-            crc.target = rig
-            crc.subtarget = obj.name
-            crc.set_inverse_pending = True
+
+            try:
+                obj.sz_lods.add_empty_lods()
+            except Exception:
+                pass
+            obj.sz_lods.high.mesh_name = obj.data.name
+            con = obj.constraints.new('COPY_TRANSFORMS')
+            con.target = rig
+            con.subtarget = obj.name
+            con.mix_mode = "BEFORE_FULL"
+            con.target_space = "POSE"
+            con.owner_space = "LOCAL"
 
         self.report({'INFO'}, f'Created new drawable {rig.name} successfully')
-
         return {'FINISHED'}
+
     
 
 class ULTRAHACX_OT_rayfire_skinned_create(bpy.types.Operator):
